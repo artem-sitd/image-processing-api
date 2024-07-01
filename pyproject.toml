@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "image-processing-api"
+version = "0.1.0"
+description = ""
+authors = ["art <tym3@yandex.ru>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12.3"
+fastapi = "^0.111.0"
+uvicorn = "^0.30.1"
+sqlalchemy = "^2.0.31"
+asyncpg = "^0.29.0"
+pillow = "^10.3.0"
+websockets = "^12.0"
+pydantic-settings = "^2.3.4"
+minio = "^7.2.7"
+alembic = "^1.13.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

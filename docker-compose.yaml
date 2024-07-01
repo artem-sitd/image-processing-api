@@ -1,0 +1,42 @@
+version: '3.12'
+
+volumes:
+  postgres_data:
+  minio_data:
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: "./Dockerfile"
+    container_name: "memes_app"
+    env_file:
+      - ".env.docker"
+    restart: "always"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - minio
+
+  db:
+    container_name: "postgres"
+    image: postgres:latest
+    env_file:
+      - ".env.docker"
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  minio:
+    container_name: "s3_minio"
+    image: minio/minio:latest
+    env_file:
+      - ".env.docker"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
