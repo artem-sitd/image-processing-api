@@ -1,11 +1,13 @@
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import Column, Integer, String, Enum, UniqueConstraint
+from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, Integer, String, Enum, UniqueConstraint, DateTime, ForeignKey
+from datetime import datetime, timezone
+import enum
 
-Base = DeclarativeBase()
+Base = declarative_base()
 
 
 # типы состояния картинок
-class ImageState(Enum):
+class ImageState(enum.Enum):
     INIT = "init"
     UPLOADED = "uploaded"
     PROCESSING = "processing"
@@ -29,4 +31,15 @@ class Image(Base):
     # условие уникальных полей filename и project_id
     __table_args__ = (
         UniqueConstraint("filename", "project_id", name="_filename_project_id"),
+    )
+
+
+class Message(Base):
+    __tablename__ = "message"
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, index=True, nullable=False)
+    image_id = Column(Integer, ForeignKey('images.id'), nullable=False)
+    message = Column(String, nullable=False)
+    timestamp = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
     )

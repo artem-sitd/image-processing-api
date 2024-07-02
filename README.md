@@ -1,5 +1,5 @@
 # memes_api
-
+docker run -p 9000:9000 -p 9001:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin docker.io/minio/minio server /home/art/minio_data --console-address ":9001
 Memes API - это RESTful API для управления мемами, созданный с использованием FastAPI, PostgreSQL, SQLAlchemy и MinIO для хранения изображений.
 
 > Проект выполнен в рамках тестового задания, требования указаны в `ТЗ.md`

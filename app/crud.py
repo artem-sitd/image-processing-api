@@ -1,10 +1,10 @@
-from fastapi import APIRouter, HTTPException, UploadFile, Depends, BackgroundTasks
-from app.models import Image, ImageState
-from settings import db_settings, minio_client
+from fastapi import APIRouter, UploadFile, Depends, BackgroundTasks, WebSocket, WebSocketDisconnect
+from app.models import Image, ImageState, Message
+from settings import db_settings, minio_client, manager
 import io
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from processing import process_and_update_image
+from .processing import process_and_update_image
 
 router = APIRouter()
 
@@ -33,9 +33,28 @@ async def create_upload_link(file: UploadFile, project_id: int, background_tasks
 
 @router.get("/projects/{project_id}/images")
 async def get_images(project_id: int, session: AsyncSession = Depends(db_settings.get_session)):
+    """Показывает все ссылки из S3 minio на картинки из проекта"""
     result = await session.execute(select(Image).filter_by(project_id=project_id))
     images = result.scalars().all()
     return {"images": [image for image in images]}
+
+
+@router.websocket("/ws/{project_id}")
+async def websocket_endpoint(websocket: WebSocket, project_id: int,
+                             session: AsyncSession = Depends(db_settings.get_session)):
+    """Здесь будут все сообщения по конкретному проекту"""
+    await manager.connect(websocket)
+    try:
+        result = await session.execute(select(Message).filter_by(project_id=project_id).order_by(Message.timestamp))
+        messages = result.scalars().all()
+        for message in messages:
+            await websocket.send_text(message.message)
+
+        while True:
+            data = await websocket.receive_text()
+            await manager.send_personal_message(f"You wrote: {data}", websocket)
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 
 @router.get("/")

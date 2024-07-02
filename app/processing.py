@@ -1,7 +1,7 @@
 import io
 from sqlalchemy.ext.asyncio import AsyncSession
-from models import Image, ImageState
-from settings import minio_client
+from .models import Image, ImageState, Message
+from settings import minio_client, manager
 from PIL import Image as PilImage
 
 
@@ -27,11 +27,12 @@ def process_image(original_data, filename):
     version_urls = {}
 
     for version, size in sizes.items():
+        manager.broadcast(f"Try resize to {size}")
         resized_data = resize_image(original_data, size)
         version_filename = f"{filename}_{version}.jpg"
         minio_client.put_object("images", version_filename, io.BytesIO(resized_data), len(resized_data))
         version_urls[version] = minio_client.presigned_get_object("images", version_filename)
-
+        manager.broadcast(f"Done resize to {size}, URL in S3 minio: {version_urls[version]}")
     return version_urls
 
 
@@ -53,9 +54,13 @@ async def process_and_update_image(session: AsyncSession, image: Image, filename
         image.state = ImageState.DONE
         await session.commit()
 
-        # Уведомление клиентов о завершении обработки
-        await manager.broadcast(f"Image {image_id} processing done")
+        message_text = f"Image {image.id} processing done."
+        new_message = Message(project_id=image.project_id, image_id=image.id, message=message_text)
+        session.add(new_message)
+        await session.commit()
+
+        await manager.broadcast(message_text)
     except Exception as e:
-        # Обновление состояния изображения на "ERROR"
-        await update_image_state(session, image_id, ImageState.ERROR)
+        # если что-то пошло не так - меняем состояние картинки на ERROR
+        image.state = ImageState.ERROR
         raise e
