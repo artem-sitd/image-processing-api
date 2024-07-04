@@ -1,22 +1,28 @@
 import io
-from sqlalchemy.ext.asyncio import AsyncSession
-from .models import Image, ImageState, Message
-from settings import minio_client, manager
+
 from PIL import Image as PilImage
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from settings import manager, minio_client
+
+from .models import Image, ImageState, Message
 
 
 # здесь и происходит обрезка картинки, сохраняет в формат S3
-def resize_image(image_data, size):
+def resize_image(image_data, size, format_file):
     with PilImage.open(io.BytesIO(image_data)) as img:
         img.thumbnail(size, PilImage.Resampling.LANCZOS)
         output = io.BytesIO()
-        img.save(output, format="JPEG")
+        img.save(output, format=format_file)
         return output.getvalue()
 
 
 # здесь происходит вызов функции, отвечающая напрямую за преобразование размеров картинок
 # обрезанная картинки отправляется в S3 (ссылки сохраняется в словарь)
-def process_image(original_data, filename):
+async def process_image(
+    original_data, filename, project_id: int, image_id: int, format_file, session
+):
     sizes = {
         "thumb": (150, 120),
         "big_thumb": (700, 700),
@@ -27,40 +33,66 @@ def process_image(original_data, filename):
     version_urls = {}
 
     for version, size in sizes.items():
-        manager.broadcast(f"Try resize to {size}")
-        resized_data = resize_image(original_data, size)
-        version_filename = f"{filename}_{version}.jpg"
-        minio_client.put_object("images", version_filename, io.BytesIO(resized_data), len(resized_data))
-        version_urls[version] = minio_client.presigned_get_object("images", version_filename)
-        manager.broadcast(f"Done resize to {size}, URL in S3 minio: {version_urls[version]}")
+        resized_data = resize_image(original_data, size, format_file)
+        version_filename = f"{version}_{filename}"
+        minio_client.put_object(
+            "images", version_filename, io.BytesIO(resized_data), len(resized_data)
+        )
+        version_urls[version] = minio_client.presigned_get_object(
+            "images", version_filename
+        )
+        message_text = (
+            f"Done resize to {size}, URL in S3 minio: {version_urls[version]}"
+        )
+        await save_and_broadcast_message(image_id, message_text, project_id, session)
+
     return version_urls
 
 
 # здесь вызывается другая функция, где обрезается оригинальная картинка на все размеры и добавляются в S3
 # также в postgres обновляются ссылки на картинки не оригинальных размеров из S3
-async def process_and_update_image(session: AsyncSession, image: Image, filename: str, original_data: bytes):
+async def process_and_update_image(
+    image: Image,
+    filename: str,
+    original_data: bytes,
+    format_file,
+    session: AsyncSession,
+):
+    result = await session.execute(select(Image).where(Image.id == image.id))
+    image = result.scalars().one()
     try:
-        # Обновляем состояние изображения на "PROCESSING"
         image.state = ImageState.PROCESSING
         await session.commit()
-        # Процессинг изображения
-        version_urls = process_image(original_data, filename)
 
-        # Обновление ссылок в базе данных и состояние на "DONE"
+        version_urls = await process_image(
+            original_data, filename, image.project_id, image.id, format_file, session
+        )
         image.thumb_url = version_urls["thumb"]
         image.big_thumb_url = version_urls["big_thumb"]
         image.big_1920_url = version_urls["big_1920"]
         image.d2500_url = version_urls["d2500"]
         image.state = ImageState.DONE
         await session.commit()
+        message_text = (
+            f"Image {image.id} in project {image.project_id} processing done."
+        )
 
-        message_text = f"Image {image.id} processing done."
-        new_message = Message(project_id=image.project_id, image_id=image.id, message=message_text)
-        session.add(new_message)
-        await session.commit()
-
-        await manager.broadcast(message_text)
+        await save_and_broadcast_message(
+            image.id, message_text, image.project_id, session
+        )
     except Exception as e:
-        # если что-то пошло не так - меняем состояние картинки на ERROR
         image.state = ImageState.ERROR
+        await session.commit()
         raise e
+
+
+async def save_and_broadcast_message(
+    image_id: int, message_text: str, project_id: int, session: AsyncSession
+):
+    new_message = Message(
+        project_id=project_id, message=message_text, image_id=image_id
+    )
+    session.add(new_message)
+    await session.commit()
+
+    await manager.broadcast(message_text, project_id)

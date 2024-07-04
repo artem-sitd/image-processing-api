@@ -8,8 +8,8 @@ services:
   app:
     build:
       context: .
-      dockerfile: "./Dockerfile"
-    container_name: "memes_app"
+      dockerfile: "app/Dockerfile"
+    container_name: "image-processing"
     env_file:
       - ".env.docker"
     restart: "always"

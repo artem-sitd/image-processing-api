@@ -1,7 +1,9 @@
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, String, Enum, UniqueConstraint, DateTime, ForeignKey
-from datetime import datetime, timezone
 import enum
+from datetime import datetime, timezone
+
+from sqlalchemy import (Column, DateTime, Enum, ForeignKey, Integer, String,
+                        UniqueConstraint)
+from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
@@ -38,7 +40,7 @@ class Message(Base):
     __tablename__ = "message"
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, index=True, nullable=False)
-    image_id = Column(Integer, ForeignKey('images.id'), nullable=False)
+    image_id = Column(Integer, ForeignKey("images.id"), nullable=False)
     message = Column(String, nullable=False)
     timestamp = Column(
         DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)

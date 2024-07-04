@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Test for Project <span id="project-id"></span></h1>
+    <ul id="messages"></ul>
+
+    <script>
+        const projectId = window.location.pathname.split("/").pop();
+        document.getElementById('project-id').textContent = projectId;
+
+        if (projectId) {
+            let ws = new WebSocket(`ws://localhost:8000/ws/${projectId}`);
+
+            ws.onopen = function(event) {
+                console.log("Connected to WebSocket server.");
+            };
+
+            ws.onmessage = function(event) {
+                let messages = document.getElementById('messages');
+                let message = document.createElement('li');
+                message.textContent = event.data;
+                messages.appendChild(message);
+            };
+
+            ws.onclose = function(event) {
+                console.log("Disconnected from WebSocket server.");
+            };
+
+            ws.onerror = function(event) {
+                console.error("WebSocket error:", event);
+            };
+        } else {
+            alert("No project_id found in the URL.");
+        }
+    </script>
+</body>
+</html>
